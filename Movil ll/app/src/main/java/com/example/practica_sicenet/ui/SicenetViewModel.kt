@@ -20,10 +20,10 @@ class SicenetViewModel(private val repository: SicenetRepository = SicenetReposi
     private val _uiState = MutableStateFlow<SicenetUiState>(SicenetUiState.Idle)
     val uiState: StateFlow<SicenetUiState> = _uiState
 
-    fun login(matricula: String, contrasenia: String, tipoUsuario: String) {
+    fun login(matricula: String, contrasenia: String) {
         viewModelScope.launch {
             _uiState.value = SicenetUiState.Loading
-            repository.accesoLogin(matricula, contrasenia, tipoUsuario).onSuccess { result ->
+            repository.accesoLogin(matricula, contrasenia).onSuccess { result ->
                 // Check if result indicates success (it's often a JSON or XML string)
                 if (result.contains("{\"acceso\":true") || result == "1" || result.contains("acceso\":true")) {
                     _uiState.value = SicenetUiState.Success("Login exitoso")

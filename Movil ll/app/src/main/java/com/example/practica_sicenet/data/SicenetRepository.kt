@@ -51,7 +51,7 @@ class SicenetRepository {
         return pattern.find(xml)?.groupValues?.get(1)
     }
 
-    suspend fun accesoLogin(matricula: String, contrasenia: String, tipoUsuario: String): Result<String> = withContext(Dispatchers.IO) {
+    suspend fun accesoLogin(matricula: String, contrasenia: String): Result<String> = withContext(Dispatchers.IO) {
         try {
             // Realizamos una llamada inicial para obtener las cookies de sesión
             val preRequest = Request.Builder().url(baseUrl).build()
@@ -67,7 +67,7 @@ class SicenetRepository {
     <accesoLogin xmlns="http://tempuri.org/">
       <strMatricula>${escapeXml(matricula)}</strMatricula>
       <strContrasenia>${escapeXml(contrasenia)}</strContrasenia>
-      <tipoUsuario>${escapeXml(tipoUsuario)}</tipoUsuario>
+      <tipoUsuario>ALUMNO</tipoUsuario>
     </accesoLogin>
   </soap:Body>
 </soap:Envelope>

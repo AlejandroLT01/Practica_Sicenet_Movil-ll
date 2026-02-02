@@ -57,7 +57,6 @@ fun SicenetApp() {
 fun LoginScreen(viewModel: SicenetViewModel, onLoginSuccess: () -> Unit) {
     var matricula by remember { mutableStateOf("") }
     var contrasenia by remember { mutableStateOf("") }
-    var tipoUsuario by remember { mutableStateOf("ALUMNO") }
     
     val uiState by viewModel.uiState.collectAsState()
 
@@ -94,20 +93,11 @@ fun LoginScreen(viewModel: SicenetViewModel, onLoginSuccess: () -> Unit) {
                 visualTransformation = PasswordVisualTransformation(),
                 modifier = Modifier.fillMaxWidth()
             )
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                RadioButton(selected = tipoUsuario == "ALUMNO", onClick = { tipoUsuario = "ALUMNO" })
-                Text("Alumno")
-                Spacer(modifier = Modifier.width(16.dp))
-                RadioButton(selected = tipoUsuario == "DOCENTE", onClick = { tipoUsuario = "DOCENTE" })
-                Text("Docente")
-            }
-
+            
             Spacer(modifier = Modifier.height(16.dp))
             
             Button(
-                onClick = { viewModel.login(matricula, contrasenia, tipoUsuario) },
+                onClick = { viewModel.login(matricula, contrasenia) },
                 modifier = Modifier.fillMaxWidth(),
                 enabled = uiState !is SicenetUiState.Loading
             ) {
