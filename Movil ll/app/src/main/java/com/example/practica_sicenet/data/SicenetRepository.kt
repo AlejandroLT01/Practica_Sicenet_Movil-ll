@@ -52,7 +52,15 @@ class SicenetRepository {
     }
 
     suspend fun accesoLogin(matricula: String, contrasenia: String, tipoUsuario: String): Result<String> = withContext(Dispatchers.IO) {
-        val soapRequest = """
+        try {
+            // Realizamos una llamada inicial para obtener las cookies de sesión
+            val preRequest = Request.Builder().url(baseUrl).build()
+            client.newCall(preRequest).execute().use { response ->
+                // Solo nos interesa que se guarden las cookies, no procesamos la respuesta
+                Log.d("SicenetRepo", "Pre-request status: ${response.code}")
+            }
+
+            val soapRequest = """
 <?xml version="1.0" encoding="utf-8"?>
 <soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
   <soap:Body>
@@ -63,28 +71,27 @@ class SicenetRepository {
     </accesoLogin>
   </soap:Body>
 </soap:Envelope>
-        """.trim()
+            """.trim()
 
-        val body = soapRequest.toRequestBody("text/xml; charset=utf-8".toMediaType())
-        val request = Request.Builder()
-            .url(baseUrl)
-            .post(body)
-            .addHeader("SOAPAction", "\"http://tempuri.org/accesoLogin\"")
-            .build()
+            val body = soapRequest.toRequestBody("text/xml; charset=utf-8".toMediaType())
+            val request = Request.Builder()
+                .url(baseUrl)
+                .post(body)
+                .addHeader("SOAPAction", "\"http://tempuri.org/accesoLogin\"")
+                .build()
 
-        try {
+
             client.newCall(request).execute().use { response ->
                 val responseBody = response.body?.string() ?: ""
                 Log.d("SicenetRepo", "Status: ${response.code}")
                 Log.d("SicenetRepo", "Body: $responseBody")
-                
+
                 if (!response.isSuccessful) return@withContext Result.failure(Exception("Error HTTP ${response.code}"))
 
                 val result = extractTagContent(responseBody, "accesoLoginResult")
                 if (result != null) {
                     Result.success(result)
                 } else {
-                    val preview = if (responseBody.length > 200) responseBody.take(200) else responseBody
                     Result.failure(Exception("Error en respuesta del servidor. Verifique credenciales."))
                 }
             }
@@ -95,23 +102,23 @@ class SicenetRepository {
     }
 
     suspend fun getAlumnoAcademicoWithLineamiento(): Result<String> = withContext(Dispatchers.IO) {
-        val soapRequest = """
+        try {
+            val soapRequest = """
 <?xml version="1.0" encoding="utf-8"?>
 <soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
   <soap:Body>
     <getAlumnoAcademicoWithLineamiento xmlns="http://tempuri.org/" />
   </soap:Body>
 </soap:Envelope>
-        """.trim()
+            """.trim()
 
-        val body = soapRequest.toRequestBody("text/xml; charset=utf-8".toMediaType())
-        val request = Request.Builder()
-            .url(baseUrl)
-            .post(body)
-            .addHeader("SOAPAction", "\"http://tempuri.org/getAlumnoAcademicoWithLineamiento\"")
-            .build()
+            val body = soapRequest.toRequestBody("text/xml; charset=utf-8".toMediaType())
+            val request = Request.Builder()
+                .url(baseUrl)
+                .post(body)
+                .addHeader("SOAPAction", "\"http://tempuri.org/getAlumnoAcademicoWithLineamiento\"")
+                .build()
 
-        try {
             client.newCall(request).execute().use { response ->
                 val responseBody = response.body?.string() ?: ""
                 val result = extractTagContent(responseBody, "getAlumnoAcademicoWithLineamientoResult")
