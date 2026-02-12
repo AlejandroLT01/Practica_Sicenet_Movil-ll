@@ -12,30 +12,39 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.util.concurrent.TimeUnit
 
-class SicenetRepository {
+/**
+ * Repository interface following the pattern in Google Codelabs.
+ */
+interface SicenetRepository {
+    suspend fun accesoLogin(matricula: String, contrasenia: String, tipoUsuario: String): Result<String>
+    suspend fun getAlumnoAcademicoWithLineamiento(): Result<String>
+}
+
+/**
+ * Network implementation of the repository.
+ */
+class NetworkSicenetRepository : SicenetRepository {
 
     private val client: OkHttpClient = OkHttpClient.Builder()
         .cookieJar(object : CookieJar {
             private val cookieStore = mutableMapOf<String, List<Cookie>>()
 
             override fun saveFromResponse(url: HttpUrl, cookies: List<Cookie>) {
-                Log.d("SicenetRepo", "Guardando cookies: $cookies")
+                Log.d("SicenetRepo", "Saving cookies for ${url.host}: $cookies")
                 cookieStore[url.host] = cookies
             }
 
             override fun loadForRequest(url: HttpUrl): List<Cookie> {
                 val cookies = cookieStore[url.host] ?: listOf()
-                Log.d("SicenetRepo", "Cargando cookies para ${url.host}: $cookies")
+                Log.d("SicenetRepo", "Loading cookies for ${url.host}: $cookies")
                 return cookies
             }
         })
         .connectTimeout(30, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
         .followRedirects(true)
-        .followSslRedirects(true)
         .build()
 
-    // Cambiamos a HTTPS permanentemente ya que el servidor lo exige
     private val baseUrl = "https://sicenet.surguanajuato.tecnm.mx/ws/wsalumnos.asmx"
 
     private fun escapeXml(text: String): String {
@@ -51,81 +60,75 @@ class SicenetRepository {
         return pattern.find(xml)?.groupValues?.get(1)
     }
 
-    suspend fun accesoLogin(matricula: String, contrasenia: String): Result<String> = withContext(Dispatchers.IO) {
+    override suspend fun accesoLogin(matricula: String, contrasenia: String, tipoUsuario: String): Result<String> = withContext(Dispatchers.IO) {
+        val soapRequest = """
+            <?xml version="1.0" encoding="utf-8"?>
+            <soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+              <soap:Body>
+                <accesoLogin xmlns="http://tempuri.org/">
+                  <strMatricula>${escapeXml(matricula)}</strMatricula>
+                  <strContrasenia>${escapeXml(contrasenia)}</strContrasenia>
+                  <tipoUsuario>${escapeXml(tipoUsuario)}</tipoUsuario>
+                </accesoLogin>
+              </soap:Body>
+            </soap:Envelope>
+        """.trim()
+
+        val body = soapRequest.toRequestBody("text/xml; charset=utf-8".toMediaType())
+        val request = Request.Builder()
+            .url(baseUrl)
+            .post(body)
+            .addHeader("SOAPAction", "\"http://tempuri.org/accesoLogin\"")
+            .build()
+
         try {
-            // Realizamos una llamada inicial para obtener las cookies de sesión
-            val preRequest = Request.Builder().url(baseUrl).build()
-            client.newCall(preRequest).execute().use { response ->
-                // Solo nos interesa que se guarden las cookies, no procesamos la respuesta
-                Log.d("SicenetRepo", "Pre-request status: ${response.code}")
-            }
-
-            val soapRequest = """
-<?xml version="1.0" encoding="utf-8"?>
-<soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
-  <soap:Body>
-    <accesoLogin xmlns="http://tempuri.org/">
-      <strMatricula>${escapeXml(matricula)}</strMatricula>
-      <strContrasenia>${escapeXml(contrasenia)}</strContrasenia>
-      <tipoUsuario>ALUMNO</tipoUsuario>
-    </accesoLogin>
-  </soap:Body>
-</soap:Envelope>
-            """.trim()
-
-            val body = soapRequest.toRequestBody("text/xml; charset=utf-8".toMediaType())
-            val request = Request.Builder()
-                .url(baseUrl)
-                .post(body)
-                .addHeader("SOAPAction", "\"http://tempuri.org/accesoLogin\"")
-                .build()
-
-
             client.newCall(request).execute().use { response ->
                 val responseBody = response.body?.string() ?: ""
-                Log.d("SicenetRepo", "Status: ${response.code}")
-                Log.d("SicenetRepo", "Body: $responseBody")
-
-                if (!response.isSuccessful) return@withContext Result.failure(Exception("Error HTTP ${response.code}"))
-
+                Log.d("SicenetRepo", "Login Response: $responseBody")
+                
+                if (!response.isSuccessful) return@withContext Result.failure(Exception("Error HTTP: ${response.code}"))
+                
                 val result = extractTagContent(responseBody, "accesoLoginResult")
                 if (result != null) {
                     Result.success(result)
                 } else {
-                    Result.failure(Exception("Error en respuesta del servidor. Verifique credenciales."))
+                    Result.failure(Exception("Respuesta inválida del servidor"))
                 }
             }
         } catch (e: Exception) {
-            Log.e("SicenetRepo", "Excepción", e)
             Result.failure(e)
         }
     }
 
-    suspend fun getAlumnoAcademicoWithLineamiento(): Result<String> = withContext(Dispatchers.IO) {
+    override suspend fun getAlumnoAcademicoWithLineamiento(): Result<String> = withContext(Dispatchers.IO) {
+        val soapRequest = """
+            <?xml version="1.0" encoding="utf-8"?>
+            <soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+              <soap:Body>
+                <getAlumnoAcademicoWithLineamiento xmlns="http://tempuri.org/" />
+              </soap:Body>
+            </soap:Envelope>
+        """.trim()
+
+        val body = soapRequest.toRequestBody("text/xml; charset=utf-8".toMediaType())
+        val request = Request.Builder()
+            .url(baseUrl)
+            .post(body)
+            .addHeader("SOAPAction", "\"http://tempuri.org/getAlumnoAcademicoWithLineamiento\"")
+            .build()
+
         try {
-            val soapRequest = """
-<?xml version="1.0" encoding="utf-8"?>
-<soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
-  <soap:Body>
-    <getAlumnoAcademicoWithLineamiento xmlns="http://tempuri.org/" />
-  </soap:Body>
-</soap:Envelope>
-            """.trim()
-
-            val body = soapRequest.toRequestBody("text/xml; charset=utf-8".toMediaType())
-            val request = Request.Builder()
-                .url(baseUrl)
-                .post(body)
-                .addHeader("SOAPAction", "\"http://tempuri.org/getAlumnoAcademicoWithLineamiento\"")
-                .build()
-
             client.newCall(request).execute().use { response ->
                 val responseBody = response.body?.string() ?: ""
+                Log.d("SicenetRepo", "Profile Response: $responseBody")
+                
+                if (!response.isSuccessful) return@withContext Result.failure(Exception("Error HTTP: ${response.code}"))
+                
                 val result = extractTagContent(responseBody, "getAlumnoAcademicoWithLineamientoResult")
                 if (result != null) {
                     Result.success(result)
                 } else {
-                    Result.failure(Exception("No se pudo recuperar el perfil."))
+                    Result.failure(Exception("No se encontró el perfil en la respuesta."))
                 }
             }
         } catch (e: Exception) {
