@@ -1,12 +1,7 @@
 package com.example.practica_sicenet.ui
 
 import androidx.lifecycle.ViewModel
-import androidx.lifecycle.ViewModelProvider
-import androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.Companion.APPLICATION_KEY
 import androidx.lifecycle.viewModelScope
-import androidx.lifecycle.viewmodel.initializer
-import androidx.lifecycle.viewmodel.viewModelFactory
-import com.example.practica_sicenet.SicenetApplication
 import com.example.practica_sicenet.data.SicenetRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -20,19 +15,20 @@ sealed class SicenetUiState {
     data class Error(val message: String) : SicenetUiState()
 }
 
-class SicenetViewModel(private val repository: SicenetRepository) : ViewModel() {
+class SicenetViewModel(private val repository: SicenetRepository = SicenetRepository()) : ViewModel() {
 
     private val _uiState = MutableStateFlow<SicenetUiState>(SicenetUiState.Idle)
     val uiState: StateFlow<SicenetUiState> = _uiState
 
-    fun login(matricula: String, contrasenia: String, tipoUsuario: String) {
+    fun login(matricula: String, contrasenia: String) {
         viewModelScope.launch {
             _uiState.value = SicenetUiState.Loading
-            repository.accesoLogin(matricula, contrasenia, tipoUsuario).onSuccess { result ->
+            repository.accesoLogin(matricula, contrasenia).onSuccess { result ->
+                // Check if result indicates success (it's often a JSON or XML string)
                 if (result.contains("{\"acceso\":true") || result == "1" || result.contains("acceso\":true")) {
                     _uiState.value = SicenetUiState.Success("Login exitoso")
                 } else {
-                    _uiState.value = SicenetUiState.Error("Credenciales incorrectas")
+                    _uiState.value = SicenetUiState.Error("Credenciales incorrectas: $result")
                 }
             }.onFailure {
                 _uiState.value = SicenetUiState.Error(it.message ?: "Error desconocido")
@@ -50,14 +46,8 @@ class SicenetViewModel(private val repository: SicenetRepository) : ViewModel() 
             }
         }
     }
-
-    companion object {
-        val Factory: ViewModelProvider.Factory = viewModelFactory {
-            initializer {
-                val application = (this[APPLICATION_KEY] as SicenetApplication)
-                val sicenetRepository = application.container.sicenetRepository
-                SicenetViewModel(repository = sicenetRepository)
-            }
-        }
+    
+    fun resetState() {
+        _uiState.value = SicenetUiState.Idle
     }
 }
