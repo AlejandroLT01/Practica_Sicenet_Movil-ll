@@ -3,7 +3,8 @@ package com.example.practica_sicenet.ui
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.practica_sicenet.data.Alumno
-import com.example.practica_sicenet.data.SicenetRepository
+import com.example.practica_sicenet.data.repository.InterfaceSicenet
+import com.example.practica_sicenet.data.repository.SicenetRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -16,7 +17,7 @@ sealed class SicenetUiState {
     data class Error(val message: String) : SicenetUiState()
 }
 
-class SicenetViewModel(private val repository: SicenetRepository = SicenetRepository()) : ViewModel() {
+class SicenetViewModel(private val repository: InterfaceSicenet = SicenetRepository()) : ViewModel() {
 
     private val _uiState = MutableStateFlow<SicenetUiState>(SicenetUiState.Idle)
     val uiState: StateFlow<SicenetUiState> = _uiState
@@ -42,7 +43,7 @@ class SicenetViewModel(private val repository: SicenetRepository = SicenetReposi
     fun getProfile() {
         viewModelScope.launch {
             _uiState.value = SicenetUiState.Loading
-            repository.getAlumnoAcademicoWithLineamiento().onSuccess { alumno ->
+            repository.getProfile().onSuccess { alumno ->
                 _uiState.value = SicenetUiState.ProfileLoaded(alumno)
             }.onFailure {
                 _uiState.value = SicenetUiState.Error(it.message ?: "Error al obtener perfil")

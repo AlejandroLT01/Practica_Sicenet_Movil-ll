@@ -1,6 +1,8 @@
-package com.example.practica_sicenet.data
+package com.example.practica_sicenet.data.repository
 
 import android.util.Log
+import com.example.practica_sicenet.data.Alumno
+import com.example.practica_sicenet.data.SicenetApiService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.Cookie
@@ -12,7 +14,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import retrofit2.Retrofit
 import java.util.concurrent.TimeUnit
 
-class SicenetRepository {
+class SicenetRepository : InterfaceSicenet {
 
     private val cookieJar = object : CookieJar {
         private val cookieStore = mutableMapOf<String, List<Cookie>>()
@@ -44,11 +46,13 @@ class SicenetRepository {
 
     private val apiService = retrofit.create(SicenetApiService::class.java)
 
-    suspend fun establishSession() = withContext(Dispatchers.IO) {
-        try {
-            apiService.establishSession()
-        } catch (e: Exception) {
-            Log.e("SicenetRepo", "Error establishing session", e)
+    override suspend fun establishSession() {
+        withContext(Dispatchers.IO) {
+            try {
+                apiService.establishSession()
+            } catch (e: Exception) {
+                Log.e("SicenetRepo", "Error establishing session", e)
+            }
         }
     }
 
@@ -65,10 +69,11 @@ class SicenetRepository {
         return pattern.find(xml)?.groupValues?.get(1)
     }
 
-    suspend fun accesoLogin(matricula: String, contrasenia: String): Result<String> = withContext(Dispatchers.IO) {
-        try {
-            establishSession() // Establecer la sesión antes login
-            val soapRequest = """
+    override suspend fun accesoLogin(matricula: String, contrasenia: String): Result<String> =
+        withContext(Dispatchers.IO) {
+            try {
+                establishSession() // Establecer la sesión antes login
+                val soapRequest = """
 <?xml version="1.0" encoding="utf-8"?>
 <soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
   <soap:Body>
@@ -81,28 +86,28 @@ class SicenetRepository {
 </soap:Envelope>
             """.trim()
 
-            val body = soapRequest.toRequestBody("text/xml; charset=utf-8".toMediaType())
+                val body = soapRequest.toRequestBody("text/xml; charset=utf-8".toMediaType())
 
-            val response = apiService.accesoLogin("\"http://tempuri.org/accesoLogin\"", body)
+                val response = apiService.accesoLogin("\"http://tempuri.org/accesoLogin\"", body)
 
-            if (response.isSuccessful) {
-                val responseBody = response.body()?.string() ?: ""
-                val result = extractTagContent(responseBody, "accesoLoginResult")
-                if (result != null) {
-                    Result.success(result)
+                if (response.isSuccessful) {
+                    val responseBody = response.body()?.string() ?: ""
+                    val result = extractTagContent(responseBody, "accesoLoginResult")
+                    if (result != null) {
+                        Result.success(result)
+                    } else {
+                        Result.failure(Exception("Error en respuesta del servidor. Verifique credenciales."))
+                    }
                 } else {
-                    Result.failure(Exception("Error en respuesta del servidor. Verifique credenciales."))
+                    Result.failure(Exception("Error HTTP ${response.code()}"))
                 }
-            } else {
-                Result.failure(Exception("Error HTTP ${response.code()}"))
+            } catch (e: Exception) {
+                Log.e("SicenetRepo", "Excepción", e)
+                Result.failure(e)
             }
-        } catch (e: Exception) {
-            Log.e("SicenetRepo", "Excepción", e)
-            Result.failure(e)
         }
-    }
 
-    suspend fun getAlumnoAcademicoWithLineamiento(): Result<Alumno> = withContext(Dispatchers.IO) {
+    override suspend fun getProfile(): Result<Alumno> = withContext(Dispatchers.IO) {
         try {
             val soapRequest = """
 <?xml version="1.0" encoding="utf-8"?>
@@ -115,11 +120,15 @@ class SicenetRepository {
 
             val body = soapRequest.toRequestBody("text/xml; charset=utf-8".toMediaType())
 
-            val response = apiService.getAlumnoAcademicoWithLineamiento("\"http://tempuri.org/getAlumnoAcademicoWithLineamiento\"", body)
+            val response = apiService.getAlumnoAcademicoWithLineamiento(
+                "\"http://tempuri.org/getAlumnoAcademicoWithLineamiento\"",
+                body
+            )
 
             if (response.isSuccessful) {
                 val responseBody = response.body()?.string() ?: ""
-                val jsonString = extractTagContent(responseBody, "getAlumnoAcademicoWithLineamientoResult")
+                val jsonString =
+                    extractTagContent(responseBody, "getAlumnoAcademicoWithLineamientoResult")
 
                 if (jsonString != null) {
                     val alumno = Alumno.fromJson(jsonString)
