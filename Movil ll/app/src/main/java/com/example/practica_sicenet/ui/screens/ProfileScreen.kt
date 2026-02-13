@@ -61,7 +61,7 @@ fun ProfileScreen(viewModel: SicenetViewModel) {
                     InfoCard(title = "Especialidad", value = alumno.especialidad)
                     InfoCard(title = "Semestre", value = alumno.semestre.toString())
                     InfoCard(title = "Estatus", value = alumno.estatus)
-                    InfoCard(title = "Créditos Totales", value = alumno.creditosTotales.toString())
+                    InfoCard(title = "Créditos Totales", value = alumno.creditosReunidos.toString())
                     InfoCard(title = "Créditos Actuales", value = alumno.creditosActuales.toString())
                     InfoCard(title = "Inscrito", value = if (alumno.inscrito) "Sí" else "No")
                     InfoCard(title = "Mod. Educativo", value = alumno.modEducativo.toString())

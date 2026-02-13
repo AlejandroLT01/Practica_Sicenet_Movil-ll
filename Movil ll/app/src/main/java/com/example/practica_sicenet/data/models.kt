@@ -1,20 +1,42 @@
 package com.example.practica_sicenet.data
 
-import kotlinx.serialization.Serializable
-import kotlinx.serialization.SerialName
+import org.json.JSONObject
 
-@Serializable
 data class Alumno(
-    @SerialName("nombre") val nombre: String = "",
-    @SerialName("matricula") val matricula: String = "",
-    @SerialName("carrera") val carrera: String = "",
-    @SerialName("semestreActual") val semestre: Int = 0,
-    @SerialName("especialidad") val especialidad: String = "",
-    @SerialName("estatus") val estatus: String = "",
-    @SerialName("creditosTotales") val creditosTotales: Int = 0,
-    @SerialName("creditosActuales") val creditosActuales: Int = 0,
-    @SerialName("inscrito") val inscrito: Boolean = false,
-    @SerialName("modEducativo") val modEducativo: Int = 0,
-    @SerialName("adeudo") val adeudo: Boolean = false,
-    @SerialName("fechaReinscripcion") val fechaReinscripcion: String = ""
-)
+    val nombre: String = "",
+    val matricula: String = "",
+    val carrera: String = "",
+    val especialidad: String = "",
+    val semestre: Int = 0,
+    val creditosReunidos: Int = 0,
+    val creditosActuales: Int = 0,
+    val estatus: String = "",
+    val inscrito: Boolean = false,
+    val fechaReinscripcion: String = "",
+    val modEducativo: Int = 0,
+    val adeudo: Boolean = false,
+) {
+    companion object {
+        fun fromJson(jsonString: String): Alumno {
+            return try {
+                val json = JSONObject(jsonString)
+                Alumno(
+                    nombre = json.optString("nombre"),
+                    matricula = json.optString("matricula"),
+                    carrera = json.optString("carrera"),
+                    especialidad = json.optString("especialidad"),
+                    semestre = json.optInt("semActual"),
+                    creditosReunidos = json.optInt("cdtosAcumulados"),
+                    creditosActuales = json.optInt("cdtosActuales"),
+                    estatus = json.optString("estatus"),
+                    inscrito = json.optBoolean("inscrito"),
+                    fechaReinscripcion = json.optString("fechaReins"),
+                    modEducativo = json.optInt("modEducativo"),
+                    adeudo = json.optBoolean("adeudo"),
+                )
+            } catch (e: Exception) {
+                Alumno()
+            }
+        }
+    }
+}

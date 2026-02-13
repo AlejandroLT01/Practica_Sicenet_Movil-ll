@@ -1,10 +1,8 @@
 package com.example.practica_sicenet.data
 
 import android.util.Log
-import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFactory
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import kotlinx.serialization.json.Json
 import okhttp3.Cookie
 import okhttp3.CookieJar
 import okhttp3.HttpUrl
@@ -39,12 +37,9 @@ class SicenetRepository {
         .followSslRedirects(true)
         .build()
 
-    private val json = Json { ignoreUnknownKeys = true }
-
     private val retrofit = Retrofit.Builder()
         .baseUrl("https://sicenet.surguanajuato.tecnm.mx/")
         .client(client)
-        .addConverterFactory(json.asConverterFactory("application/json".toMediaType()))
         .build()
 
     private val apiService = retrofit.create(SicenetApiService::class.java)
@@ -118,7 +113,7 @@ class SicenetRepository {
                 val jsonString = extractTagContent(responseBody, "getAlumnoAcademicoWithLineamientoResult")
 
                 if (jsonString != null) {
-                    val alumno = json.decodeFromString<Alumno>(jsonString)
+                    val alumno = Alumno.fromJson(jsonString)
                     Result.success(alumno)
                 } else {
                     Result.failure(Exception("No se pudo recuperar el perfil."))
