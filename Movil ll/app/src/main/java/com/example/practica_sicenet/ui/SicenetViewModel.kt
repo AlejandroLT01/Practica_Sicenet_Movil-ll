@@ -24,12 +24,14 @@ class SicenetViewModel(private val repository: SicenetRepository = SicenetReposi
     fun login(matricula: String, contrasenia: String) {
         viewModelScope.launch {
             _uiState.value = SicenetUiState.Loading
+            // Establecer la sesión primero
+            repository.establishSession()
+            // Después, intentar el login
             repository.accesoLogin(matricula, contrasenia).onSuccess { result ->
-                // Check if result indicates success (it's often a JSON or XML string)
                 if (result.contains("{\"acceso\":true") || result == "1" || result.contains("acceso\":true")) {
                     _uiState.value = SicenetUiState.Success("Login exitoso")
                 } else {
-                    _uiState.value = SicenetUiState.Error("Credenciales incorrectas: $result")
+                    _uiState.value = SicenetUiState.Error("Error en respuesta del servidor. Verifique credenciales.")
                 }
             }.onFailure {
                 _uiState.value = SicenetUiState.Error(it.message ?: "Error desconocido")
@@ -47,7 +49,7 @@ class SicenetViewModel(private val repository: SicenetRepository = SicenetReposi
             }
         }
     }
-    
+
     fun resetState() {
         _uiState.value = SicenetUiState.Idle
     }

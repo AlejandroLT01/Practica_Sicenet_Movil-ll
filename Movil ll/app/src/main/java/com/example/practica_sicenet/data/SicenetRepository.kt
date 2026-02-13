@@ -44,6 +44,14 @@ class SicenetRepository {
 
     private val apiService = retrofit.create(SicenetApiService::class.java)
 
+    suspend fun establishSession() = withContext(Dispatchers.IO) {
+        try {
+            apiService.establishSession()
+        } catch (e: Exception) {
+            Log.e("SicenetRepo", "Error establishing session", e)
+        }
+    }
+
     private fun escapeXml(text: String): String {
         return text.replace("&", "&amp;")
             .replace("<", "&lt;")
@@ -59,6 +67,7 @@ class SicenetRepository {
 
     suspend fun accesoLogin(matricula: String, contrasenia: String): Result<String> = withContext(Dispatchers.IO) {
         try {
+            establishSession() // Establecer la sesión antes login
             val soapRequest = """
 <?xml version="1.0" encoding="utf-8"?>
 <soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
