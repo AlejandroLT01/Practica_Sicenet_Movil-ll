@@ -1,43 +1,28 @@
 package com.example.practica_sicenet.ui.screens
 
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.practica_sicenet.data.Alumno
 import com.example.practica_sicenet.ui.SicenetUiState
 import com.example.practica_sicenet.ui.SicenetViewModel
+import java.text.SimpleDateFormat
+import java.util.*
 
 @Composable
 fun ProfileScreen(viewModel: SicenetViewModel) {
     val uiState by viewModel.uiState.collectAsState()
+    val alumno by viewModel.alumno.collectAsState()
 
-    LaunchedEffect(Unit) {
-        viewModel.getProfile()
-    }
-
-    Scaffold {
-        padding ->
+    Scaffold { padding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -47,34 +32,36 @@ fun ProfileScreen(viewModel: SicenetViewModel) {
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text(text = "Perfil Académico", style = MaterialTheme.typography.headlineMedium)
+            
+            alumno?.let {
+                val date = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault()).format(Date(it.lastUpdate))
+                Text("Última actualización: $date", fontSize = 12.sp, color = MaterialTheme.colorScheme.secondary)
+            }
+            
             Spacer(modifier = Modifier.height(16.dp))
 
-            when (val state = uiState) {
-                is SicenetUiState.Loading -> {
-                    CircularProgressIndicator()
-                }
-                is SicenetUiState.ProfileLoaded -> {
-                    val alumno = state.alumno
-                    InfoCard(title = "Matrícula", value = alumno.matricula)
-                    InfoCard(title = "Carrera", value = alumno.carrera)
-                    InfoCard(title = "Nombre", value = alumno.nombre)
-                    InfoCard(title = "Especialidad", value = alumno.especialidad)
-                    InfoCard(title = "Semestre", value = alumno.semestre.toString())
-                    InfoCard(title = "Estatus", value = alumno.estatus)
-                    InfoCard(title = "Créditos Totales", value = alumno.creditosReunidos.toString())
-                    InfoCard(title = "Créditos Actuales", value = alumno.creditosActuales.toString())
-                    InfoCard(title = "Inscrito", value = if (alumno.inscrito) "Sí" else "No")
-                    InfoCard(title = "Mod. Educativo", value = alumno.modEducativo.toString())
-                    InfoCard(title = "Adeudo", value = if (alumno.adeudo) "Sí" else "Sin Adeudos")
-                    InfoCard(title = "Fecha de Reinscripción", value = alumno.fechaReinscripcion)
-                }
-                is SicenetUiState.Error -> {
-                    Text(text = state.message, color = MaterialTheme.colorScheme.error)
-                    Button(onClick = { viewModel.getProfile() }) {
-                        Text("Reintentar")
-                    }
-                }
-                else -> {}
+            if (uiState is SicenetUiState.Loading) {
+                CircularProgressIndicator()
+                Spacer(modifier = Modifier.height(8.dp))
+            }
+
+            alumno?.let { alu ->
+                InfoCard(title = "Matrícula", value = alu.matricula)
+                InfoCard(title = "Carrera", value = alu.carrera)
+                InfoCard(title = "Nombre", value = alu.nombre)
+                InfoCard(title = "Especialidad", value = alu.especialidad)
+                InfoCard(title = "Semestre", value = alu.semestre.toString())
+                InfoCard(title = "Estatus", value = alu.estatus)
+                InfoCard(title = "Créditos Totales", value = alu.creditosReunidos.toString())
+                InfoCard(title = "Créditos Actuales", value = alu.creditosActuales.toString())
+                InfoCard(title = "Inscrito", value = if (alu.inscrito) "Sí" else "No")
+                InfoCard(title = "Mod. Educativo", value = alu.modEducativo.toString())
+                InfoCard(title = "Adeudo", value = if (alu.adeudo) "Sí" else "Sin Adeudos")
+                InfoCard(title = "Fecha de Reinscripción", value = alu.fechaReinscripcion)
+            }
+
+            if (uiState is SicenetUiState.Error) {
+                Text(text = (uiState as SicenetUiState.Error).message, color = MaterialTheme.colorScheme.error)
             }
         }
     }

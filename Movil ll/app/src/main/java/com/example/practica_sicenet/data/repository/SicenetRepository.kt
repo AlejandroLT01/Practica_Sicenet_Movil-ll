@@ -1,8 +1,7 @@
 package com.example.practica_sicenet.data.repository
 
 import android.util.Log
-import com.example.practica_sicenet.data.Alumno
-import com.example.practica_sicenet.data.SicenetApiService
+import com.example.practica_sicenet.data.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.Cookie
@@ -18,25 +17,13 @@ class SicenetRepository : InterfaceSicenet {
 
     private val cookieJar = object : CookieJar {
         private val cookieStore = mutableMapOf<String, List<Cookie>>()
-
-        override fun saveFromResponse(url: HttpUrl, cookies: List<Cookie>) {
-            Log.d("SicenetRepo", "Guardando cookies: $cookies")
-            cookieStore[url.host] = cookies
-        }
-
-        override fun loadForRequest(url: HttpUrl): List<Cookie> {
-            val cookies = cookieStore[url.host] ?: listOf()
-            Log.d("SicenetRepo", "Cargando cookies para ${url.host}: $cookies")
-            return cookies
-        }
+        override fun saveFromResponse(url: HttpUrl, cookies: List<Cookie>) { cookieStore[url.host] = cookies }
+        override fun loadForRequest(url: HttpUrl): List<Cookie> = cookieStore[url.host] ?: listOf()
     }
 
     private val client: OkHttpClient = OkHttpClient.Builder()
         .cookieJar(cookieJar)
         .connectTimeout(30, TimeUnit.SECONDS)
-        .readTimeout(30, TimeUnit.SECONDS)
-        .followRedirects(true)
-        .followSslRedirects(true)
         .build()
 
     private val retrofit = Retrofit.Builder()
@@ -47,100 +34,80 @@ class SicenetRepository : InterfaceSicenet {
     private val apiService = retrofit.create(SicenetApiService::class.java)
 
     override suspend fun establishSession() {
-        withContext(Dispatchers.IO) {
-            try {
-                apiService.establishSession()
-            } catch (e: Exception) {
-                Log.e("SicenetRepo", "Error establishing session", e)
-            }
-        }
+        try { apiService.establishSession() } catch (e: Exception) {}
     }
 
-    private fun escapeXml(text: String): String {
-        return text.replace("&", "&amp;")
-            .replace("<", "&lt;")
-            .replace(">", "&gt;")
-            .replace("\"", "&quot;")
-            .replace("'", "&apos;")
+    private fun escapeXml(text: String): String = text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+    private fun unescapeJson(text: String): String {
+        return text.replace("&quot;", "\"")
+            .replace("&lt;", "<")
+            .replace("&gt;", ">")
+            .replace("&amp;", "&")
+            .replace("<![CDATA[", "")
+            .replace("]]>", "")
+            .trim()
     }
 
     private fun extractTagContent(xml: String, tagName: String): String? {
         val pattern = "<(?:\\w+:)?$tagName(?:\\s+[^>]*)?>(.*?)</(?:\\w+:)?$tagName>".toRegex(RegexOption.DOT_MATCHES_ALL)
-        return pattern.find(xml)?.groupValues?.get(1)
+        val raw = pattern.find(xml)?.groupValues?.get(1)
+        return raw?.let { unescapeJson(it) }
     }
 
-    override suspend fun accesoLogin(matricula: String, contrasenia: String): Result<String> =
-        withContext(Dispatchers.IO) {
-            try {
-                establishSession() // Establecer la sesión antes login
-                val soapRequest = """
-<?xml version="1.0" encoding="utf-8"?>
-<soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
-  <soap:Body>
-    <accesoLogin xmlns="http://tempuri.org/">
-      <strMatricula>${escapeXml(matricula)}</strMatricula>
-      <strContrasenia>${escapeXml(contrasenia)}</strContrasenia>
-      <tipoUsuario>ALUMNO</tipoUsuario>
-    </accesoLogin>
-  </soap:Body>
-</soap:Envelope>
-            """.trim()
-
-                val body = soapRequest.toRequestBody("text/xml; charset=utf-8".toMediaType())
-
-                val response = apiService.accesoLogin("\"http://tempuri.org/accesoLogin\"", body)
-
-                if (response.isSuccessful) {
-                    val responseBody = response.body()?.string() ?: ""
-                    val result = extractTagContent(responseBody, "accesoLoginResult")
-                    if (result != null) {
-                        Result.success(result)
-                    } else {
-                        Result.failure(Exception("Error en respuesta del servidor. Verifique credenciales."))
-                    }
-                } else {
-                    Result.failure(Exception("Error HTTP ${response.code()}"))
-                }
-            } catch (e: Exception) {
-                Log.e("SicenetRepo", "Excepción", e)
-                Result.failure(e)
-            }
-        }
+    override suspend fun accesoLogin(matricula: String, contrasenia: String): Result<String> = withContext(Dispatchers.IO) {
+        try {
+            establishSession()
+            val soap = """<?xml version="1.0" encoding="utf-8"?><soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"><soap:Body><accesoLogin xmlns="http://tempuri.org/"><strMatricula>${escapeXml(matricula)}</strMatricula><strContrasenia>${escapeXml(contrasenia)}</strContrasenia><tipoUsuario>ALUMNO</tipoUsuario></accesoLogin></soap:Body></soap:Envelope>"""
+            val body = soap.toRequestBody("text/xml".toMediaType())
+            val response = apiService.accesoLogin("\"http://tempuri.org/accesoLogin\"", body)
+            val result = extractTagContent(response.body()?.string() ?: "", "accesoLoginResult")
+            if (result != null) Result.success(result) else Result.failure(Exception("Error"))
+        } catch (e: Exception) { Result.failure(e) }
+    }
 
     override suspend fun getProfile(): Result<Alumno> = withContext(Dispatchers.IO) {
         try {
-            val soapRequest = """
-<?xml version="1.0" encoding="utf-8"?>
-<soap:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
-  <soap:Body>
-    <getAlumnoAcademicoWithLineamiento xmlns="http://tempuri.org/" />
-  </soap:Body>
-</soap:Envelope>
-            """.trim()
+            val soap = """<?xml version="1.0" encoding="utf-8"?><soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"><soap:Body><getAlumnoAcademicoWithLineamiento xmlns="http://tempuri.org/" /></soap:Body></soap:Envelope>"""
+            val response = apiService.getAlumnoAcademicoWithLineamiento("\"http://tempuri.org/getAlumnoAcademicoWithLineamiento\"", soap.toRequestBody("text/xml".toMediaType()))
+            val json = extractTagContent(response.body()?.string() ?: "", "getAlumnoAcademicoWithLineamientoResult")
+            if (json != null) Result.success(Alumno.fromJson(json)) else Result.failure(Exception("Error"))
+        } catch (e: Exception) { Result.failure(e) }
+    }
 
-            val body = soapRequest.toRequestBody("text/xml; charset=utf-8".toMediaType())
+    override suspend fun getCargaAcademica(): Result<List<CargaAcademica>> = withContext(Dispatchers.IO) {
+        try {
+            val soap = """<?xml version="1.0" encoding="utf-8"?><soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"><soap:Body><getCargaAcademicaByAlumno xmlns="http://tempuri.org/" /></soap:Body></soap:Envelope>"""
+            val response = apiService.getCargaAcademicaByAlumno("\"http://tempuri.org/getCargaAcademicaByAlumno\"", soap.toRequestBody("text/xml".toMediaType()))
+            val json = extractTagContent(response.body()?.string() ?: "", "getCargaAcademicaByAlumnoResult")
+            Result.success(CargaAcademica.fromJsonList(json ?: ""))
+        } catch (e: Exception) { Result.failure(e) }
+    }
 
-            val response = apiService.getAlumnoAcademicoWithLineamiento(
-                "\"http://tempuri.org/getAlumnoAcademicoWithLineamiento\"",
-                body
-            )
+    override suspend fun getKardex(lineamiento: Int): Result<List<Kardex>> = withContext(Dispatchers.IO) {
+        try {
+            val soap = """<?xml version="1.0" encoding="utf-8"?><soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"><soap:Body><getAllKardexConPromedioByAlumno xmlns="http://tempuri.org/"><aluLineamiento>$lineamiento</aluLineamiento></getAllKardexConPromedioByAlumno></soap:Body></soap:Envelope>"""
+            val response = apiService.getAllKardexConPromedioByAlumno("\"http://tempuri.org/getAllKardexConPromedioByAlumno\"", soap.toRequestBody("text/xml".toMediaType()))
+            val json = extractTagContent(response.body()?.string() ?: "", "getAllKardexConPromedioByAlumnoResult")
+            Result.success(Kardex.fromJsonList(json ?: ""))
+        } catch (e: Exception) { Result.failure(e) }
+    }
 
-            if (response.isSuccessful) {
-                val responseBody = response.body()?.string() ?: ""
-                val jsonString =
-                    extractTagContent(responseBody, "getAlumnoAcademicoWithLineamientoResult")
+    override suspend fun getCalifUnidades(): Result<List<CalificacionUnidad>> = withContext(Dispatchers.IO) {
+        try {
+            val soap = """<?xml version="1.0" encoding="utf-8"?><soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"><soap:Body><getCalifUnidadesByAlumno xmlns="http://tempuri.org/" /></soap:Body></soap:Envelope>"""
+            val response = apiService.getCalifUnidadesByAlumno("\"http://tempuri.org/getCalifUnidadesByAlumno\"", soap.toRequestBody("text/xml".toMediaType()))
+            val json = extractTagContent(response.body()?.string() ?: "", "getCalifUnidadesByAlumnoResult")
+            Result.success(CalificacionUnidad.fromJsonList(json ?: ""))
+        } catch (e: Exception) { Result.failure(e) }
+    }
 
-                if (jsonString != null) {
-                    val alumno = Alumno.fromJson(jsonString)
-                    Result.success(alumno)
-                } else {
-                    Result.failure(Exception("No se pudo recuperar el perfil."))
-                }
-            } else {
-                Result.failure(Exception("Error HTTP ${response.code()}"))
-            }
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
+    override suspend fun getCalifFinales(modEducativo: Int): Result<List<CalificacionFinal>> = withContext(Dispatchers.IO) {
+        try {
+            val soap = """<?xml version="1.0" encoding="utf-8"?><soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"><soap:Body><getAllCalifFinalByAlumnos xmlns="http://tempuri.org/"><bytModEducativo>$modEducativo</bytModEducativo></getAllCalifFinalByAlumnos></soap:Body></soap:Envelope>"""
+            val response = apiService.getAllCalifFinalByAlumnos("\"http://tempuri.org/getAllCalifFinalByAlumnos\"", soap.toRequestBody("text/xml".toMediaType()))
+            val json = extractTagContent(response.body()?.string() ?: "", "getAllCalifFinalByAlumnosResult")
+            Result.success(CalificacionFinal.fromJsonList(json ?: ""))
+        } catch (e: Exception) { Result.failure(e) }
     }
 }

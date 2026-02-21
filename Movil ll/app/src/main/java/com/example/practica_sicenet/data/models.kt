@@ -1,10 +1,14 @@
 package com.example.practica_sicenet.data
 
+import androidx.room.Entity
+import androidx.room.PrimaryKey
+import org.json.JSONArray
 import org.json.JSONObject
 
+@Entity(tableName = "alumno")
 data class Alumno(
+    @PrimaryKey val matricula: String = "",
     val nombre: String = "",
-    val matricula: String = "",
     val carrera: String = "",
     val especialidad: String = "",
     val semestre: Int = 0,
@@ -15,28 +19,162 @@ data class Alumno(
     val fechaReinscripcion: String = "",
     val modEducativo: Int = 0,
     val adeudo: Boolean = false,
+    val lastUpdate: Long = System.currentTimeMillis()
 ) {
     companion object {
         fun fromJson(jsonString: String): Alumno {
             return try {
                 val json = JSONObject(jsonString)
                 Alumno(
-                    nombre = json.optString("nombre"),
-                    matricula = json.optString("matricula"),
-                    carrera = json.optString("carrera"),
-                    especialidad = json.optString("especialidad"),
-                    semestre = json.optInt("semActual"),
-                    creditosReunidos = json.optInt("cdtosAcumulados"),
-                    creditosActuales = json.optInt("cdtosActuales"),
-                    estatus = json.optString("estatus"),
-                    inscrito = json.optBoolean("inscrito"),
-                    fechaReinscripcion = json.optString("fechaReins"),
-                    modEducativo = json.optInt("modEducativo"),
-                    adeudo = json.optBoolean("adeudo"),
+                    nombre = json.optString("nombre").ifEmpty { json.optString("Nombre") },
+                    matricula = json.optString("matricula").ifEmpty { json.optString("Matricula") },
+                    carrera = json.optString("carrera").ifEmpty { json.optString("Carrera") },
+                    especialidad = json.optString("especialidad").ifEmpty { json.optString("Especialidad") },
+                    semestre = json.optInt("semActual", json.optInt("SemActual")),
+                    creditosReunidos = json.optInt("cdtosAcumulados", json.optInt("CdtosAcumulados")),
+                    creditosActuales = json.optInt("cdtosActuales", json.optInt("CdtosActuales")),
+                    estatus = json.optString("estatus").ifEmpty { json.optString("Estatus") },
+                    inscrito = json.optBoolean("inscrito", json.optBoolean("Inscrito")),
+                    fechaReinscripcion = json.optString("fechaReins").ifEmpty { json.optString("FechaReins") },
+                    modEducativo = json.optInt("modEducativo", json.optInt("ModEducativo")),
+                    adeudo = json.optBoolean("adeudo", json.optBoolean("Adeudo")),
                 )
             } catch (e: Exception) {
                 Alumno()
             }
+        }
+    }
+}
+
+@Entity(tableName = "carga_academica")
+data class CargaAcademica(
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    val materia: String,
+    val docente: String,
+    val grupo: String,
+    val creditos: Int,
+    val lunes: String,
+    val martes: String,
+    val miercoles: String,
+    val jueves: String,
+    val viernes: String
+) {
+    companion object {
+        fun fromJsonList(jsonString: String): List<CargaAcademica> {
+            val list = mutableListOf<CargaAcademica>()
+            try {
+                val jsonArray = JSONArray(jsonString)
+                for (i in 0 until jsonArray.length()) {
+                    val json = jsonArray.getJSONObject(i)
+                    list.add(CargaAcademica(
+                        materia = json.optString("materia").ifEmpty { json.optString("Materia").ifEmpty { json.optString("Asignatura") } },
+                        docente = json.optString("docente").ifEmpty { json.optString("Docente").ifEmpty { json.optString("maestro") } },
+                        grupo = json.optString("grupo").ifEmpty { json.optString("Grupo") },
+                        creditos = json.optInt("creditos", json.optInt("Creditos")),
+                        lunes = json.optString("lunes").ifEmpty { json.optString("Lunes") },
+                        martes = json.optString("martes").ifEmpty { json.optString("Martes") },
+                        miercoles = json.optString("miercoles").ifEmpty { json.optString("Miercoles") },
+                        jueves = json.optString("jueves").ifEmpty { json.optString("Jueves") },
+                        viernes = json.optString("viernes").ifEmpty { json.optString("Viernes") }
+                    ))
+                }
+            } catch (e: Exception) {}
+            return list
+        }
+    }
+}
+
+@Entity(tableName = "kardex")
+data class Kardex(
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    val materia: String,
+    val calificacion: Int,
+    val semestre: Int,
+    val creditos: Int,
+    val periodo: String
+) {
+    companion object {
+        fun fromJsonList(jsonString: String): List<Kardex> {
+            val list = mutableListOf<Kardex>()
+            try {
+                val jsonArray = JSONArray(jsonString)
+                for (i in 0 until jsonArray.length()) {
+                    val json = jsonArray.getJSONObject(i)
+                    val calif = json.optInt("calif", json.optInt("Calif", json.optInt("Promedio", json.optInt("promedio"))))
+                    list.add(Kardex(
+                        materia = json.optString("materia").ifEmpty { json.optString("Materia").ifEmpty { json.optString("Asignatura") } },
+                        calificacion = calif,
+                        semestre = json.optInt("semestre", json.optInt("Semestre")),
+                        creditos = json.optInt("creditos", json.optInt("Creditos")),
+                        periodo = json.optString("periodo").ifEmpty { json.optString("Periodo") }
+                    ))
+                }
+            } catch (e: Exception) {}
+            return list
+        }
+    }
+}
+
+@Entity(tableName = "calificaciones_unidades")
+data class CalificacionUnidad(
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    val materia: String,
+    val unidades: String
+) {
+    companion object {
+        fun fromJsonList(jsonString: String): List<CalificacionUnidad> {
+            val list = mutableListOf<CalificacionUnidad>()
+            try {
+                val jsonArray = JSONArray(jsonString)
+                for (i in 0 until jsonArray.length()) {
+                    val json = jsonArray.getJSONObject(i)
+                    val materia = json.optString("materia").ifEmpty { json.optString("Materia") }
+                    
+                    val unitsBuilder = StringBuilder()
+                    // Barrer posibles etiquetas C1..C13 o P1..P13 que usa Sicenet
+                    for (u in 1..13) {
+                        val cKey = "C$u"
+                        val pKey = "P$u"
+                        val valC = json.optString(cKey).ifEmpty { json.optString(cKey.lowercase()) }
+                        val valP = json.optString(pKey).ifEmpty { json.optString(pKey.lowercase()) }
+                        
+                        val finalVal = if (valC.isNotEmpty()) valC else valP
+                        if (finalVal.isNotEmpty() && finalVal != "null") {
+                            unitsBuilder.append("U$u: $finalVal  ")
+                        }
+                    }
+                    
+                    list.add(CalificacionUnidad(
+                        materia = materia,
+                        unidades = unitsBuilder.toString().trim()
+                    ))
+                }
+            } catch (e: Exception) {}
+            return list
+        }
+    }
+}
+
+@Entity(tableName = "calificaciones_finales")
+data class CalificacionFinal(
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
+    val materia: String,
+    val calificacion: Int
+) {
+    companion object {
+        fun fromJsonList(jsonString: String): List<CalificacionFinal> {
+            val list = mutableListOf<CalificacionFinal>()
+            try {
+                val jsonArray = JSONArray(jsonString)
+                for (i in 0 until jsonArray.length()) {
+                    val json = jsonArray.getJSONObject(i)
+                    list.add(CalificacionFinal(
+                        materia = json.optString("materia").ifEmpty { json.optString("Materia") },
+                        calificacion = json.optInt("calif", json.optInt("Calif", json.optInt("Promedio")))
+                    ))
+                }
+            } catch (e: Exception) {}
+            return list
         }
     }
 }

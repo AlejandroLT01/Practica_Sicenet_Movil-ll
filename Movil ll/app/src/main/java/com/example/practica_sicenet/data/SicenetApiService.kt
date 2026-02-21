@@ -27,4 +27,32 @@ interface SicenetApiService {
         @Header("SOAPAction") soapAction: String,
         @Body requestBody: RequestBody
     ): Response<ResponseBody>
+
+    @Headers("Content-Type: text/xml; charset=utf-8")
+    @POST("ws/wsalumnos.asmx")
+    suspend fun getCargaAcademicaByAlumno(
+        @Header("SOAPAction") soapAction: String,
+        @Body requestBody: RequestBody
+    ): Response<ResponseBody>
+
+    @Headers("Content-Type: text/xml; charset=utf-8")
+    @POST("ws/wsalumnos.asmx")
+    suspend fun getAllKardexConPromedioByAlumno(
+        @Header("SOAPAction") soapAction: String,
+        @Body requestBody: RequestBody
+    ): Response<ResponseBody>
+
+    @Headers("Content-Type: text/xml; charset=utf-8")
+    @POST("ws/wsalumnos.asmx")
+    suspend fun getCalifUnidadesByAlumno(
+        @Header("SOAPAction") soapAction: String,
+        @Body requestBody: RequestBody
+    ): Response<ResponseBody>
+
+    @Headers("Content-Type: text/xml; charset=utf-8")
+    @POST("ws/wsalumnos.asmx")
+    suspend fun getAllCalifFinalByAlumnos(
+        @Header("SOAPAction") soapAction: String,
+        @Body requestBody: RequestBody
+    ): Response<ResponseBody>
 }
