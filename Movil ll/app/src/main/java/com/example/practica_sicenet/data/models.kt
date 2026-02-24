@@ -63,7 +63,17 @@ data class CargaAcademica(
         fun fromJsonList(jsonString: String): List<CargaAcademica> {
             val list = mutableListOf<CargaAcademica>()
             try {
-                val jsonArray = JSONArray(jsonString)
+                val trimmed = jsonString.trim()
+                val arrayStr = when {
+                    trimmed.startsWith("{\"d\":") -> JSONObject(trimmed).getString("d")
+                    trimmed.startsWith("{") -> {
+                        val obj = JSONObject(trimmed)
+                        val keys = obj.keys()
+                        if (keys.hasNext()) obj.getString(keys.next()) else trimmed
+                    }
+                    else -> trimmed
+                }
+                val jsonArray = JSONArray(arrayStr)
                 for (i in 0 until jsonArray.length()) {
                     val json = jsonArray.getJSONObject(i)
                     list.add(CargaAcademica(
@@ -97,13 +107,35 @@ data class Kardex(
         fun fromJsonList(jsonString: String): List<Kardex> {
             val list = mutableListOf<Kardex>()
             try {
-                val jsonArray = JSONArray(jsonString)
+                val trimmed = jsonString.trim()
+                val arrayStr = when {
+                    trimmed.startsWith("{\"d\":") -> JSONObject(trimmed).getString("d")
+                    trimmed.startsWith("{") -> {
+                        val obj = JSONObject(trimmed)
+                        val keys = obj.keys()
+                        var found: String? = null
+                        while(keys.hasNext()) {
+                            val key = keys.next()
+                            if (obj.get(key) is JSONArray) { found = obj.getString(key); break }
+                        }
+                        found ?: trimmed
+                    }
+                    else -> trimmed
+                }
+                
+                val jsonArray = JSONArray(arrayStr)
                 for (i in 0 until jsonArray.length()) {
                     val json = jsonArray.getJSONObject(i)
-                    val calif = json.optInt("calif", json.optInt("Calif", json.optInt("Promedio", json.optInt("promedio"))))
+                    val materia = json.optString("materia").ifEmpty { json.optString("Materia").ifEmpty { json.optString("Asignatura") } }
+                    if (materia.isEmpty() || materia == "null") continue
+                    
+                    // Procesar calificación (puede venir como "95.0" o "AC")
+                    val rawCalif = json.optString("calif").ifEmpty { json.optString("Calif").ifEmpty { json.optString("Promedio").ifEmpty { json.optString("promedio") } } }
+                    val califInt = rawCalif.replace(".0", "").toIntOrNull() ?: 0
+                    
                     list.add(Kardex(
-                        materia = json.optString("materia").ifEmpty { json.optString("Materia").ifEmpty { json.optString("Asignatura") } },
-                        calificacion = calif,
+                        materia = materia,
+                        calificacion = califInt,
                         semestre = json.optInt("semestre", json.optInt("Semestre")),
                         creditos = json.optInt("creditos", json.optInt("Creditos")),
                         periodo = json.optString("periodo").ifEmpty { json.optString("Periodo") }
@@ -125,29 +157,24 @@ data class CalificacionUnidad(
         fun fromJsonList(jsonString: String): List<CalificacionUnidad> {
             val list = mutableListOf<CalificacionUnidad>()
             try {
-                val jsonArray = JSONArray(jsonString)
+                val array = if (jsonString.trim().startsWith("{\"d\":")) JSONObject(jsonString).getString("d") else jsonString
+                val jsonArray = JSONArray(array)
                 for (i in 0 until jsonArray.length()) {
                     val json = jsonArray.getJSONObject(i)
                     val materia = json.optString("materia").ifEmpty { json.optString("Materia") }
+                    if (materia.isEmpty()) continue
                     
                     val unitsBuilder = StringBuilder()
-                    // Barrer posibles etiquetas C1..C13 o P1..P13 que usa Sicenet
                     for (u in 1..13) {
-                        val cKey = "C$u"
-                        val pKey = "P$u"
+                        val cKey = "C$u"; val pKey = "P$u"
                         val valC = json.optString(cKey).ifEmpty { json.optString(cKey.lowercase()) }
                         val valP = json.optString(pKey).ifEmpty { json.optString(pKey.lowercase()) }
-                        
                         val finalVal = if (valC.isNotEmpty()) valC else valP
                         if (finalVal.isNotEmpty() && finalVal != "null") {
                             unitsBuilder.append("U$u: $finalVal  ")
                         }
                     }
-                    
-                    list.add(CalificacionUnidad(
-                        materia = materia,
-                        unidades = unitsBuilder.toString().trim()
-                    ))
+                    list.add(CalificacionUnidad(materia = materia, unidades = unitsBuilder.toString().trim()))
                 }
             } catch (e: Exception) {}
             return list
@@ -165,13 +192,17 @@ data class CalificacionFinal(
         fun fromJsonList(jsonString: String): List<CalificacionFinal> {
             val list = mutableListOf<CalificacionFinal>()
             try {
-                val jsonArray = JSONArray(jsonString)
+                val array = if (jsonString.trim().startsWith("{\"d\":")) JSONObject(jsonString).getString("d") else jsonString
+                val jsonArray = JSONArray(array)
                 for (i in 0 until jsonArray.length()) {
                     val json = jsonArray.getJSONObject(i)
-                    list.add(CalificacionFinal(
-                        materia = json.optString("materia").ifEmpty { json.optString("Materia") },
-                        calificacion = json.optInt("calif", json.optInt("Calif", json.optInt("Promedio")))
-                    ))
+                    val materia = json.optString("materia").ifEmpty { json.optString("Materia") }
+                    if (materia.isEmpty()) continue
+                    
+                    val rawCalif = json.optString("calif").ifEmpty { json.optString("Calif").ifEmpty { json.optString("Promedio") } }
+                    val califInt = rawCalif.replace(".0", "").toIntOrNull() ?: 0
+                    
+                    list.add(CalificacionFinal(materia = materia, calificacion = califInt))
                 }
             } catch (e: Exception) {}
             return list
