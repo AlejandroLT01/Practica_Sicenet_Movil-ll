@@ -50,8 +50,23 @@ fun CargaItem(item: CargaAcademica) {
             Text(text = "Docente: ${item.docente}", fontSize = 14.sp)
             Text(text = "Grupo: ${item.grupo} | Créditos: ${item.creditos}", fontSize = 12.sp)
             Divider(modifier = Modifier.padding(vertical = 4.dp))
-            Text(text = "Lunes: ${item.lunes} | Martes: ${item.martes} | Miércoles: ${item.miercoles}", fontSize = 11.sp)
-            Text(text = "Jueves: ${item.jueves} | Viernes: ${item.viernes}", fontSize = 11.sp)
+            
+            //lista de los días y filtro de los que no tienen horario
+            val diasHorario = listOf(
+                "Lunes" to item.lunes,
+                "Martes" to item.martes,
+                "Miércoles" to item.miercoles,
+                "Jueves" to item.jueves,
+                "Viernes" to item.viernes
+            ).filter { it.second.isNotBlank() && it.second != "null" }
+            
+            if (diasHorario.isNotEmpty()) {
+                //juntar días usando | como separador
+                val scheduleText = diasHorario.joinToString(" | ") { "${it.first}: ${it.second}" }
+                Text(text = scheduleText, fontSize = 11.sp, lineHeight = 14.sp)
+            } else {
+                Text(text = "Sin horario asignado", fontSize = 11.sp, color = MaterialTheme.colorScheme.error)
+            }
         }
     }
 }
