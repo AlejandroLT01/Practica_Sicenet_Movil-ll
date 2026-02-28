@@ -8,7 +8,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.work.*
 import com.example.practica_sicenet.data.*
 import com.example.practica_sicenet.data.local.SicenetDatabase
-import com.example.practica_sicenet.data.repository.InterfaceSicenet
+import com.example.practica_sicenet.data.repository.LocalRepository
 import com.example.practica_sicenet.data.repository.SicenetRepository
 import com.example.practica_sicenet.data.worker.*
 import kotlinx.coroutines.flow.*
@@ -22,25 +22,23 @@ sealed class SicenetUiState {
 }
 
 class SicenetViewModel(application: Application) : AndroidViewModel(application) {
-    private val repository: InterfaceSicenet = SicenetRepository()
     private val database = SicenetDatabase.getDatabase(application)
-    private val dao = database.sicenetDao()
+    private val localRepository = LocalRepository(database.sicenetDao())
     private val workManager = WorkManager.getInstance(application)
 
     private val _uiState = MutableStateFlow<SicenetUiState>(SicenetUiState.Idle)
     val uiState: StateFlow<SicenetUiState> = _uiState
 
-    val alumno: StateFlow<Alumno?> = dao.getAlumno().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
-    val carga: StateFlow<List<CargaAcademica>> = dao.getCarga().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-    val kardex: StateFlow<List<Kardex>> = dao.getKardex().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-    val califUnidades: StateFlow<List<CalificacionUnidad>> = dao.getCalifUnidades().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-    val califFinales: StateFlow<List<CalificacionFinal>> = dao.getCalifFinales().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    val alumno: StateFlow<Alumno?> = localRepository.getAlumno().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+    val carga: StateFlow<List<CargaAcademica>> = localRepository.getCarga().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    val kardex: StateFlow<List<Kardex>> = localRepository.getKardex().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    val califUnidades: StateFlow<List<CalificacionUnidad>> = localRepository.getCalifUnidades().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    val califFinales: StateFlow<List<CalificacionFinal>> = localRepository.getCalifFinales().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     fun login(matricula: String, contrasenia: String) {
         viewModelScope.launch {
             _uiState.value = SicenetUiState.Loading
 
-            // Guardamos credenciales para que los Workers las usen para re-autenticarse
             val sharedPref = getApplication<Application>().getSharedPreferences("sicenet_prefs", Context.MODE_PRIVATE)
             sharedPref.edit()
                 .putString("matricula", matricula)
@@ -51,14 +49,24 @@ class SicenetViewModel(application: Application) : AndroidViewModel(application)
                 .setRequiredNetworkType(NetworkType.CONNECTED)
                 .build()
 
-            val syncWork = OneTimeWorkRequestBuilder<FetchProfileWorker>()
+            // REQUISITO: 2 peticiones de trabajo que se deben ver como únicos.
+            // El primero consulta (Fetch), el segundo almacena (Store).
+            val fetchWork = OneTimeWorkRequestBuilder<FetchProfileWorker>()
                 .setConstraints(constraints)
                 .setInputData(workDataOf("matricula" to matricula, "password" to contrasenia))
                 .build()
 
-            workManager.enqueueUniqueWork("login_sync", ExistingWorkPolicy.REPLACE, syncWork)
+            val storeWork = OneTimeWorkRequestBuilder<StoreProfileWorker>()
+                .setConstraints(constraints)
+                .build()
+
+            val continuation = workManager.beginUniqueWork("login_sync", ExistingWorkPolicy.REPLACE, fetchWork)
+                .then(storeWork)
             
-            workManager.getWorkInfoByIdLiveData(syncWork.id).asFlow().collect { workInfo ->
+            continuation.enqueue()
+            
+            // Monitoreamos el primer worker (o el último) para saber el estatus y mostrar en UI
+            workManager.getWorkInfoByIdLiveData(fetchWork.id).asFlow().collect { workInfo ->
                 if (workInfo?.state == WorkInfo.State.SUCCEEDED) {
                     _uiState.value = SicenetUiState.Success("Login exitoso")
                 } else if (workInfo?.state == WorkInfo.State.FAILED) {
@@ -75,22 +83,42 @@ class SicenetViewModel(application: Application) : AndroidViewModel(application)
                 .setRequiredNetworkType(NetworkType.CONNECTED)
                 .build()
 
-            val workRequest = when(type) {
-                "CARGA" -> OneTimeWorkRequestBuilder<FetchCargaWorker>()
-                "KARDEX" -> OneTimeWorkRequestBuilder<FetchKardexWorker>().setInputData(workDataOf("lineamiento" to lineamiento))
-                "UNIDADES" -> OneTimeWorkRequestBuilder<FetchCalifUnidadesWorker>()
-                "FINALES" -> OneTimeWorkRequestBuilder<FetchCalifFinalesWorker>().setInputData(workDataOf("mod" to mod))
-                else -> null
-            }?.setConstraints(constraints)?.build()
+            val fetchRequest: OneTimeWorkRequest
+            val storeRequest: OneTimeWorkRequest
 
-            if (workRequest != null) {
-                workManager.enqueueUniqueWork("sync_$type", ExistingWorkPolicy.REPLACE, workRequest)
-                workManager.getWorkInfoByIdLiveData(workRequest.id).asFlow().collect { workInfo ->
-                    if (workInfo?.state == WorkInfo.State.SUCCEEDED) {
-                        _uiState.value = SicenetUiState.Idle
-                    } else if (workInfo?.state == WorkInfo.State.FAILED) {
-                        _uiState.value = SicenetUiState.Error("Fallo sincronización")
-                    }
+            when(type) {
+                "CARGA" -> {
+                    fetchRequest = OneTimeWorkRequestBuilder<FetchCargaWorker>().setConstraints(constraints).build()
+                    storeRequest = OneTimeWorkRequestBuilder<StoreCargaWorker>().setConstraints(constraints).build()
+                }
+                "KARDEX" -> {
+                    val data = workDataOf("lineamiento" to lineamiento)
+                    fetchRequest = OneTimeWorkRequestBuilder<FetchKardexWorker>().setConstraints(constraints).setInputData(data).build()
+                    storeRequest = OneTimeWorkRequestBuilder<StoreKardexWorker>().setConstraints(constraints).setInputData(data).build()
+                }
+                "UNIDADES" -> {
+                    fetchRequest = OneTimeWorkRequestBuilder<FetchUnitsWorker>().setConstraints(constraints).build()
+                    storeRequest = OneTimeWorkRequestBuilder<StoreUnitsWorker>().setConstraints(constraints).build()
+                }
+                "FINALES" -> {
+                    val data = workDataOf("mod" to mod)
+                    fetchRequest = OneTimeWorkRequestBuilder<FetchFinalsWorker>().setConstraints(constraints).setInputData(data).build()
+                    storeRequest = OneTimeWorkRequestBuilder<StoreFinalsWorker>().setConstraints(constraints).setInputData(data).build()
+                }
+                else -> return@launch
+            }
+
+            // Encadenamiento de 2 peticiones de trabajo únicas
+            workManager.beginUniqueWork("sync_$type", ExistingWorkPolicy.REPLACE, fetchRequest)
+                .then(storeRequest)
+                .enqueue()
+
+            // Monitoreamos el estatus del primer worker para mostrar info en UI apenas se tenga
+            workManager.getWorkInfoByIdLiveData(fetchRequest.id).asFlow().collect { workInfo ->
+                if (workInfo?.state == WorkInfo.State.SUCCEEDED) {
+                    _uiState.value = SicenetUiState.Idle
+                } else if (workInfo?.state == WorkInfo.State.FAILED) {
+                    _uiState.value = SicenetUiState.Error("Fallo sincronización")
                 }
             }
         }

@@ -5,6 +5,81 @@ import androidx.room.PrimaryKey
 import org.json.JSONArray
 import org.json.JSONObject
 
+// --- MOTOR DE BÚSQUEDA DEFINITIVO PARA SICENET ---
+
+fun JSONObject.findString(vararg keywords: String): String {
+    val keysList = mutableListOf<String>()
+    this.keys().forEach { keysList.add(it) }
+
+    // 1. Prioridad: Coincidencia exacta o abreviaturas conocidas
+    for (key in keywords) {
+        val actualKey = keysList.find { it.equals(key, ignoreCase = true) }
+        if (actualKey != null) {
+            val v = this.optString(actualKey, "")
+            if (v.isNotEmpty() && v != "null") return v.trim()
+        }
+    }
+
+    // 2. Prioridad: Búsqueda parcial (contiene la palabra)
+    for (word in keywords) {
+        if (word.length < 2) continue
+        val fuzzyKey = keysList.find { it.contains(word, ignoreCase = true) || word.contains(it, ignoreCase = true) }
+        if (fuzzyKey != null) {
+            val v = this.optString(fuzzyKey, "")
+            if (v.isNotEmpty() && v != "null") return v.trim()
+        }
+    }
+    return ""
+}
+
+fun JSONObject.findInt(vararg keywords: String): Int {
+    val keysList = mutableListOf<String>()
+    this.keys().forEach { keysList.add(it) }
+
+    for (key in keywords) {
+        val actualKey = keysList.find { it.equals(key, ignoreCase = true) }
+        if (actualKey != null) {
+            val raw = this.optString(actualKey, "0").split(".")[0]
+            val clean = raw.replace(Regex("[^0-9]"), "")
+            if (clean.isNotEmpty()) return clean.toIntOrNull() ?: 0
+        }
+    }
+
+    for (word in keywords) {
+        if (word.length < 2) continue
+        val fuzzyKey = keysList.find { it.contains(word, ignoreCase = true) || word.contains(it, ignoreCase = true) }
+        if (fuzzyKey != null) {
+            val raw = this.optString(fuzzyKey, "0").split(".")[0]
+            val clean = raw.replace(Regex("[^0-9]"), "")
+            if (clean.isNotEmpty()) return clean.toIntOrNull() ?: 0
+        }
+    }
+    return 0
+}
+
+fun findJsonArray(jsonString: String): JSONArray {
+    val trimmed = jsonString.trim()
+    if (trimmed.startsWith("[")) return JSONArray(trimmed)
+    if (trimmed.startsWith("{")) {
+        val obj = JSONObject(trimmed)
+        if (obj.has("d")) {
+            val d = obj.get("d")
+            if (d is JSONArray) return d
+            if (d is String) return findJsonArray(d)
+        }
+        val keys = obj.keys()
+        while (keys.hasNext()) {
+            val key = keys.next()
+            val item = obj.get(key)
+            if (item is JSONArray) return item
+            if (item is String && (item.startsWith("[") || item.startsWith("{"))) {
+                try { return findJsonArray(item) } catch(e: Exception) {}
+            }
+        }
+    }
+    return JSONArray()
+}
+
 @Entity(tableName = "alumno")
 data class Alumno(
     @PrimaryKey val matricula: String = "",
@@ -26,22 +101,20 @@ data class Alumno(
             return try {
                 val json = JSONObject(jsonString)
                 Alumno(
-                    nombre = json.optString("nombre").ifEmpty { json.optString("Nombre") },
-                    matricula = json.optString("matricula").ifEmpty { json.optString("Matricula") },
-                    carrera = json.optString("carrera").ifEmpty { json.optString("Carrera") },
-                    especialidad = json.optString("especialidad").ifEmpty { json.optString("Especialidad") },
-                    semestre = json.optInt("semActual", json.optInt("SemActual")),
-                    creditosReunidos = json.optInt("cdtosAcumulados", json.optInt("CdtosAcumulados")),
-                    creditosActuales = json.optInt("cdtosActuales", json.optInt("CdtosActuales")),
-                    estatus = json.optString("estatus").ifEmpty { json.optString("Estatus") },
-                    inscrito = json.optBoolean("inscrito", json.optBoolean("Inscrito")),
-                    fechaReinscripcion = json.optString("fechaReins").ifEmpty { json.optString("FechaReins") },
-                    modEducativo = json.optInt("modEducativo", json.optInt("ModEducativo")),
-                    adeudo = json.optBoolean("adeudo", json.optBoolean("Adeudo")),
+                    nombre = json.findString("Nombre", "nombre"),
+                    matricula = json.findString("Matricula", "matricula"),
+                    carrera = json.findString("Carrera", "carrera"),
+                    especialidad = json.findString("Especialidad", "especialidad"),
+                    semestre = json.findInt("SemActual", "semestre"),
+                    creditosReunidos = json.findInt("CdtosAcumulados", "reunidos"),
+                    creditosActuales = json.findInt("CdtosActuales", "actuales"),
+                    estatus = json.findString("Estatus", "estatus"),
+                    inscrito = json.optBoolean("Inscrito", true),
+                    fechaReinscripcion = json.findString("FechaReins", "fecha"),
+                    modEducativo = json.findInt("ModEducativo", "mod"),
+                    adeudo = json.optBoolean("Adeudo", false),
                 )
-            } catch (e: Exception) {
-                Alumno()
-            }
+            } catch (e: Exception) { Alumno() }
         }
     }
 }
@@ -63,29 +136,19 @@ data class CargaAcademica(
         fun fromJsonList(jsonString: String): List<CargaAcademica> {
             val list = mutableListOf<CargaAcademica>()
             try {
-                val trimmed = jsonString.trim()
-                val arrayStr = when {
-                    trimmed.startsWith("{\"d\":") -> JSONObject(trimmed).getString("d")
-                    trimmed.startsWith("{") -> {
-                        val obj = JSONObject(trimmed)
-                        val keys = obj.keys()
-                        if (keys.hasNext()) obj.getString(keys.next()) else trimmed
-                    }
-                    else -> trimmed
-                }
-                val jsonArray = JSONArray(arrayStr)
+                val jsonArray = findJsonArray(jsonString)
                 for (i in 0 until jsonArray.length()) {
                     val json = jsonArray.getJSONObject(i)
                     list.add(CargaAcademica(
-                        materia = json.optString("materia").ifEmpty { json.optString("Materia").ifEmpty { json.optString("Asignatura") } },
-                        docente = json.optString("docente").ifEmpty { json.optString("Docente").ifEmpty { json.optString("maestro") } },
-                        grupo = json.optString("grupo").ifEmpty { json.optString("Grupo") },
-                        creditos = json.optInt("creditos", json.optInt("Creditos")),
-                        lunes = json.optString("lunes").ifEmpty { json.optString("Lunes") },
-                        martes = json.optString("martes").ifEmpty { json.optString("Martes") },
-                        miercoles = json.optString("miercoles").ifEmpty { json.optString("Miercoles") },
-                        jueves = json.optString("jueves").ifEmpty { json.optString("Jueves") },
-                        viernes = json.optString("viernes").ifEmpty { json.optString("Viernes") }
+                        materia = json.findString("materia", "asignatura", "Asignatura"),
+                        docente = json.findString("docente", "maestro", "Docente"),
+                        grupo = json.findString("grupo", "Grupo"),
+                        creditos = json.findInt("creditos", "clvCredito", "Crd", "Cd", "C"),
+                        lunes = json.findString("lunes"),
+                        martes = json.findString("martes"),
+                        miercoles = json.findString("miercoles"),
+                        jueves = json.findString("jueves"),
+                        viernes = json.findString("viernes")
                     ))
                 }
             } catch (e: Exception) {}
@@ -107,38 +170,19 @@ data class Kardex(
         fun fromJsonList(jsonString: String): List<Kardex> {
             val list = mutableListOf<Kardex>()
             try {
-                val trimmed = jsonString.trim()
-                val arrayStr = when {
-                    trimmed.startsWith("{\"d\":") -> JSONObject(trimmed).getString("d")
-                    trimmed.startsWith("{") -> {
-                        val obj = JSONObject(trimmed)
-                        val keys = obj.keys()
-                        var found: String? = null
-                        while(keys.hasNext()) {
-                            val key = keys.next()
-                            if (obj.get(key) is JSONArray) { found = obj.getString(key); break }
-                        }
-                        found ?: trimmed
-                    }
-                    else -> trimmed
-                }
-                
-                val jsonArray = JSONArray(arrayStr)
+                val jsonArray = findJsonArray(jsonString)
                 for (i in 0 until jsonArray.length()) {
                     val json = jsonArray.getJSONObject(i)
-                    val materia = json.optString("materia").ifEmpty { json.optString("Materia").ifEmpty { json.optString("Asignatura") } }
-                    if (materia.isEmpty() || materia == "null") continue
-                    
-                    // Procesar calificación (puede venir como "95.0" o "AC")
-                    val rawCalif = json.optString("calif").ifEmpty { json.optString("Calif").ifEmpty { json.optString("Promedio").ifEmpty { json.optString("promedio") } } }
-                    val califInt = rawCalif.replace(".0", "").toIntOrNull() ?: 0
+                    val materia = json.findString("materia", "asignatura", "Asignatura")
+                    if (materia.isEmpty()) continue
                     
                     list.add(Kardex(
                         materia = materia,
-                        calificacion = califInt,
-                        semestre = json.optInt("semestre", json.optInt("Semestre")),
-                        creditos = json.optInt("creditos", json.optInt("Creditos")),
-                        periodo = json.optString("periodo").ifEmpty { json.optString("Periodo") }
+                        calificacion = json.findInt("Calif", "Promedio", "calif", "prm"),
+                        // MAPEO REFORZADO PARA KARDEX:
+                        semestre = json.findInt("Semestre", "nivel", "Sem", "S"),
+                        creditos = json.findInt("Creditos", "Crd", "Cd", "C"),
+                        periodo = json.findString("Periodo", "ciclo", "Pd", "Per", "P")
                     ))
                 }
             } catch (e: Exception) {}
@@ -157,22 +201,18 @@ data class CalificacionUnidad(
         fun fromJsonList(jsonString: String): List<CalificacionUnidad> {
             val list = mutableListOf<CalificacionUnidad>()
             try {
-                val array = if (jsonString.trim().startsWith("{\"d\":")) JSONObject(jsonString).getString("d") else jsonString
-                val jsonArray = JSONArray(array)
+                val jsonArray = findJsonArray(jsonString)
                 for (i in 0 until jsonArray.length()) {
                     val json = jsonArray.getJSONObject(i)
-                    val materia = json.optString("materia").ifEmpty { json.optString("Materia") }
+                    val materia = json.findString("materia", "Materia")
                     if (materia.isEmpty()) continue
                     
                     val unitsBuilder = StringBuilder()
                     for (u in 1..13) {
-                        val cKey = "C$u"; val pKey = "P$u"
-                        val valC = json.optString(cKey).ifEmpty { json.optString(cKey.lowercase()) }
-                        val valP = json.optString(pKey).ifEmpty { json.optString(pKey.lowercase()) }
+                        val valC = json.findString("C$u")
+                        val valP = json.findString("P$u")
                         val finalVal = if (valC.isNotEmpty()) valC else valP
-                        if (finalVal.isNotEmpty() && finalVal != "null") {
-                            unitsBuilder.append("U$u: $finalVal  ")
-                        }
+                        if (finalVal.isNotEmpty()) unitsBuilder.append("U$u: $finalVal  ")
                     }
                     list.add(CalificacionUnidad(materia = materia, unidades = unitsBuilder.toString().trim()))
                 }
@@ -192,17 +232,15 @@ data class CalificacionFinal(
         fun fromJsonList(jsonString: String): List<CalificacionFinal> {
             val list = mutableListOf<CalificacionFinal>()
             try {
-                val array = if (jsonString.trim().startsWith("{\"d\":")) JSONObject(jsonString).getString("d") else jsonString
-                val jsonArray = JSONArray(array)
+                val jsonArray = findJsonArray(jsonString)
                 for (i in 0 until jsonArray.length()) {
                     val json = jsonArray.getJSONObject(i)
-                    val materia = json.optString("materia").ifEmpty { json.optString("Materia") }
+                    val materia = json.findString("materia", "Materia")
                     if (materia.isEmpty()) continue
-                    
-                    val rawCalif = json.optString("calif").ifEmpty { json.optString("Calif").ifEmpty { json.optString("Promedio") } }
-                    val califInt = rawCalif.replace(".0", "").toIntOrNull() ?: 0
-                    
-                    list.add(CalificacionFinal(materia = materia, calificacion = califInt))
+                    list.add(CalificacionFinal(
+                        materia = materia, 
+                        calificacion = json.findInt("calif", "promedio", "Calif")
+                    ))
                 }
             } catch (e: Exception) {}
             return list
