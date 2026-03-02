@@ -139,19 +139,26 @@ data class CargaAcademica(
                 val jsonArray = findJsonArray(jsonString)
                 for (i in 0 until jsonArray.length()) {
                     val json = jsonArray.getJSONObject(i)
+
+                    //Se extrae la materia primero para validar
+                    val materiaNom = json.findString("Materia", "materia", "Asignatura")
+                    if (materiaNom.isEmpty()) continue
+
                     list.add(CargaAcademica(
-                        materia = json.findString("materia", "asignatura", "Asignatura"),
-                        docente = json.findString("docente", "maestro", "Docente"),
-                        grupo = json.findString("grupo", "Grupo"),
-                        creditos = json.findInt("creditos", "clvCredito", "Crd", "Cd", "C"),
-                        lunes = json.findString("lunes"),
-                        martes = json.findString("martes"),
-                        miercoles = json.findString("miercoles"),
-                        jueves = json.findString("jueves"),
-                        viernes = json.findString("viernes")
+                        materia = materiaNom,
+                        docente = json.findString("Docente", "maestro", "Profesor"),
+                        grupo = json.findString("Grupo", "grupo"),
+                        creditos = json.findInt("CreditosMateria", "Cdts", "creditos", "clvCredito"),
+                        lunes = json.findString("Lunes", "lunes"),
+                        martes = json.findString("Martes", "martes"),
+                        miercoles = json.findString("Miercoles", "miercoles"),
+                        jueves = json.findString("Jueves", "jueves"),
+                        viernes = json.findString("Viernes", "viernes")
                     ))
                 }
-            } catch (e: Exception) {}
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
             return list
         }
     }
@@ -173,19 +180,28 @@ data class Kardex(
                 val jsonArray = findJsonArray(jsonString)
                 for (i in 0 until jsonArray.length()) {
                     val json = jsonArray.getJSONObject(i)
-                    val materia = json.findString("materia", "asignatura", "Asignatura")
+                    val materia = json.findString("Materia", "materia", "asignatura", "Asignatura")
                     if (materia.isEmpty()) continue
-                    
+
+                    //Se extrae el periodo y año (3ra, luego 2da, luego 1ra oportunidad)
+                    val periodoStr = json.findString("P3", "P2", "P1", "Periodo", "Pd")
+                    val anioStr = json.findString("A3", "A2", "A1")
+
+                    //Unir periodo y año ("ENE-JUN 2023")
+                    val periodoCompleto = if (anioStr.isNotEmpty()) "$periodoStr $anioStr" else periodoStr
+
                     list.add(Kardex(
                         materia = materia,
                         calificacion = json.findInt("Calif", "Promedio", "calif", "prm"),
-                        // MAPEO REFORZADO PARA KARDEX:
-                        semestre = json.findInt("Semestre", "nivel", "Sem", "S"),
-                        creditos = json.findInt("Creditos", "Crd", "Cd", "C"),
-                        periodo = json.findString("Periodo", "ciclo", "Pd", "Per", "P")
+                        //S3, luego S2, luego S1
+                        semestre = json.findInt("S3", "S2", "S1", "Semestre", "Sem"),
+                        creditos = json.findInt("Cdts", "Creditos", "Crd", "Cd", "C"),
+                        periodo = periodoCompleto
                     ))
                 }
-            } catch (e: Exception) {}
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
             return list
         }
     }
@@ -204,19 +220,30 @@ data class CalificacionUnidad(
                 val jsonArray = findJsonArray(jsonString)
                 for (i in 0 until jsonArray.length()) {
                     val json = jsonArray.getJSONObject(i)
-                    val materia = json.findString("materia", "Materia")
+                    val materia = json.findString("Materia", "materia")
                     if (materia.isEmpty()) continue
-                    
+
+                    //"UnidadesActivas" dice cuántas unidades mostrar ("111111" = 6 unidades)
+                    val activas = json.optString("UnidadesActivas", "")
+                    val numUnidades = if (activas.isNotEmpty()) activas.length else 13
+
                     val unitsBuilder = StringBuilder()
-                    for (u in 1..13) {
-                        val valC = json.findString("C$u")
-                        val valP = json.findString("P$u")
-                        val finalVal = if (valC.isNotEmpty()) valC else valP
-                        if (finalVal.isNotEmpty()) unitsBuilder.append("U$u: $finalVal  ")
+                    for (u in 1..numUnidades) {
+                        val valC = json.optString("C$u", "")
+                        //Se agrega la unidad si no es null y no está vacía
+                        if (valC.isNotEmpty() && valC != "null") {
+                            unitsBuilder.append("U$u: $valC  ")
+                        }
                     }
-                    list.add(CalificacionUnidad(materia = materia, unidades = unitsBuilder.toString().trim()))
+
+                    list.add(CalificacionUnidad(
+                        materia = materia,
+                        unidades = unitsBuilder.toString().trim().ifEmpty { "Sin calificaciones" }
+                    ))
                 }
-            } catch (e: Exception) {}
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
             return list
         }
     }
@@ -239,7 +266,7 @@ data class CalificacionFinal(
                     if (materia.isEmpty()) continue
                     list.add(CalificacionFinal(
                         materia = materia, 
-                        calificacion = json.findInt("calif", "promedio", "Calif")
+                        calificacion = json.findInt("Calif", "Promedio", "promedio", "calif", "Nota")
                     ))
                 }
             } catch (e: Exception) {}
