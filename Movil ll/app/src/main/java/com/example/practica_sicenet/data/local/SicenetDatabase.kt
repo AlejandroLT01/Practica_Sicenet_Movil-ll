@@ -20,6 +20,9 @@ interface SicenetDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAlumno(alumno: Alumno)
 
+    @Query("DELETE FROM alumno")
+    suspend fun clearAlumno()
+
     @Query("SELECT * FROM alumno LIMIT 1")
     fun getAlumno(): Flow<Alumno?>
 

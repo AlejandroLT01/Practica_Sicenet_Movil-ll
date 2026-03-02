@@ -29,48 +29,51 @@ class SicenetViewModel(application: Application) : AndroidViewModel(application)
     private val _uiState = MutableStateFlow<SicenetUiState>(SicenetUiState.Idle)
     val uiState: StateFlow<SicenetUiState> = _uiState
 
-    val alumno: StateFlow<Alumno?> = localRepository.getAlumno().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
-    val carga: StateFlow<List<CargaAcademica>> = localRepository.getCarga().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-    val kardex: StateFlow<List<Kardex>> = localRepository.getKardex().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-    val califUnidades: StateFlow<List<CalificacionUnidad>> = localRepository.getCalifUnidades().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
-    val califFinales: StateFlow<List<CalificacionFinal>> = localRepository.getCalifFinales().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    // Flows conectados a Room (siempre activos)
+    val alumno = localRepository.getAlumno().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+    val carga = localRepository.getCarga().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    val kardex = localRepository.getKardex().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    val califUnidades = localRepository.getCalifUnidades().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+    val califFinales = localRepository.getCalifFinales().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     fun login(matricula: String, contrasenia: String) {
         viewModelScope.launch {
             _uiState.value = SicenetUiState.Loading
 
+            // 1. INTENTO OFFLINE REFORZADO
             val sharedPref = getApplication<Application>().getSharedPreferences("sicenet_prefs", Context.MODE_PRIVATE)
-            sharedPref.edit()
-                .putString("matricula", matricula)
-                .putString("password", contrasenia)
-                .apply()
+            val savedPass = sharedPref.getString("password", "")
 
-            val constraints = Constraints.Builder()
-                .setRequiredNetworkType(NetworkType.CONNECTED)
-                .build()
+            // En lugar de alumno.value, pedimos el primer valor que emita el repositorio
+            val alumnoLocal = localRepository.getAlumno().firstOrNull()
 
-            // REQUISITO: 2 peticiones de trabajo que se deben ver como únicos.
-            // El primero consulta (Fetch), el segundo almacena (Store).
+            if (alumnoLocal != null && alumnoLocal.matricula == matricula && contrasenia == savedPass) {
+                _uiState.value = SicenetUiState.Success("Sesión iniciada (Offline)")
+                return@launch
+            }
+
+            // 2. INTENTO ONLINE (Si no hay datos locales o son diferentes)
+            sharedPref.edit().putString("matricula", matricula).putString("password", contrasenia).apply()
+
+            val constraints = Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()
+
             val fetchWork = OneTimeWorkRequestBuilder<FetchProfileWorker>()
                 .setConstraints(constraints)
                 .setInputData(workDataOf("matricula" to matricula, "password" to contrasenia))
                 .build()
 
-            val storeWork = OneTimeWorkRequestBuilder<StoreProfileWorker>()
-                .setConstraints(constraints)
-                .build()
+            val storeWork = OneTimeWorkRequestBuilder<StoreProfileWorker>().setConstraints(constraints).build()
 
-            val continuation = workManager.beginUniqueWork("login_sync", ExistingWorkPolicy.REPLACE, fetchWork)
+            workManager.beginUniqueWork("login_sync", ExistingWorkPolicy.REPLACE, fetchWork)
                 .then(storeWork)
-            
-            continuation.enqueue()
-            
-            // Monitoreamos el primer worker (o el último) para saber el estatus y mostrar en UI
+                .enqueue()
+
+            // Monitoreamos el fetch para avisar a la UI
             workManager.getWorkInfoByIdLiveData(fetchWork.id).asFlow().collect { workInfo ->
-                if (workInfo?.state == WorkInfo.State.SUCCEEDED) {
-                    _uiState.value = SicenetUiState.Success("Login exitoso")
-                } else if (workInfo?.state == WorkInfo.State.FAILED) {
-                    _uiState.value = SicenetUiState.Error("Error en autenticación o red")
+                when (workInfo?.state) {
+                    WorkInfo.State.SUCCEEDED -> _uiState.value = SicenetUiState.Success("Conectado al servidor")
+                    WorkInfo.State.FAILED -> _uiState.value = SicenetUiState.Error("Error de red o credenciales")
+                    else -> { /* Esperando */ }
                 }
             }
         }
@@ -79,13 +82,12 @@ class SicenetViewModel(application: Application) : AndroidViewModel(application)
     fun syncData(type: String, lineamiento: Int = 1, mod: Int = 1) {
         viewModelScope.launch {
             _uiState.value = SicenetUiState.Loading
-            val constraints = Constraints.Builder()
-                .setRequiredNetworkType(NetworkType.CONNECTED)
-                .build()
+            val constraints = Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()
 
             val fetchRequest: OneTimeWorkRequest
             val storeRequest: OneTimeWorkRequest
 
+            // Configuramos los pares de workers según el tipo
             when(type) {
                 "CARGA" -> {
                     fetchRequest = OneTimeWorkRequestBuilder<FetchCargaWorker>().setConstraints(constraints).build()
@@ -108,21 +110,17 @@ class SicenetViewModel(application: Application) : AndroidViewModel(application)
                 else -> return@launch
             }
 
-            // Encadenamiento de 2 peticiones de trabajo únicas
             workManager.beginUniqueWork("sync_$type", ExistingWorkPolicy.REPLACE, fetchRequest)
                 .then(storeRequest)
                 .enqueue()
 
-            // Monitoreamos el estatus del primer worker para mostrar info en UI apenas se tenga
             workManager.getWorkInfoByIdLiveData(fetchRequest.id).asFlow().collect { workInfo ->
-                if (workInfo?.state == WorkInfo.State.SUCCEEDED) {
-                    _uiState.value = SicenetUiState.Idle
-                } else if (workInfo?.state == WorkInfo.State.FAILED) {
-                    _uiState.value = SicenetUiState.Error("Fallo sincronización")
-                }
+                if (workInfo?.state == WorkInfo.State.SUCCEEDED) _uiState.value = SicenetUiState.Idle
+                else if (workInfo?.state == WorkInfo.State.FAILED) _uiState.value = SicenetUiState.Error("Sin conexión")
             }
         }
     }
+
 
     fun resetState() {
         _uiState.value = SicenetUiState.Idle
