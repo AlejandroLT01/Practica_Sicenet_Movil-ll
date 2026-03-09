@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- Permisos requeridos para leer y escribir en el Content Provider de la otra app -->
+    <uses-permission android:name="com.example.practica_sicenet.READ_DATABASE" />
+    <uses-permission android:name="com.example.practica_sicenet.WRITE_DATABASE" />
+
+    <!-- Configuración de consultas para Android 11+ (Debe ir fuera de <application>) -->
+    <queries>
+        <package android:name="com.example.practica_sicenet" />
+        <provider android:authorities="com.example.practica_sicenet.provider" />
+    </queries>
+
+    <application
+        android:allowBackup="true"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_rules"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.PracticaContentProviderEnSiceDroidCompoose">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:theme="@style/Theme.PracticaContentProviderEnSiceDroidCompoose">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+
+</manifest>
