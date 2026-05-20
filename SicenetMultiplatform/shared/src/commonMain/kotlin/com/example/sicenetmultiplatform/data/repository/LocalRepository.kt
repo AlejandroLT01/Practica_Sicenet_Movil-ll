@@ -11,7 +11,12 @@ class LocalRepository(private val dao: SicenetDao) {
     fun getCalifUnidades(): Flow<List<CalificacionUnidad>> = dao.getCalifUnidades()
     fun getCalifFinales(): Flow<List<CalificacionFinal>> = dao.getCalifFinales()
 
-    suspend fun insertAlumno(alumno: Alumno) = dao.insertAlumno(alumno)
+    suspend fun insertAlumno(alumno: Alumno) {
+        // Limpiamos el alumno anterior antes de insertar el nuevo
+        // para evitar que se muestre información mezclada o vieja
+        dao.clearAlumno()
+        dao.insertAlumno(alumno)
+    }
     
     suspend fun saveCarga(carga: List<CargaAcademica>) {
         dao.clearCarga()
@@ -31,5 +36,13 @@ class LocalRepository(private val dao: SicenetDao) {
     suspend fun saveCalifFinales(calif: List<CalificacionFinal>) {
         dao.clearCalifFinales()
         dao.insertCalifFinales(calif)
+    }
+
+    suspend fun clearAllData() {
+        dao.clearAlumno()
+        dao.clearCarga()
+        dao.clearKardex()
+        dao.clearCalifUnidades()
+        dao.clearCalifFinales()
     }
 }

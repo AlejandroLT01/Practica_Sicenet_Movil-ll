@@ -20,20 +20,18 @@ class SicenetViewModel(
     private val sicenetRepository: SicenetRepository
 ) : ViewModel() {
     
-    // For now, these must be initialized or injected. 
-    // This is a simplified version for KMP migration.
     private val syncEngine = SicenetSyncEngine(localRepository, sicenetRepository)
 
     private val _uiState = MutableStateFlow<SicenetUiState>(SicenetUiState.Idle)
     val uiState: StateFlow<SicenetUiState> = _uiState
 
+    // Observamos los datos directamente de la base de datos local
     val alumno = localRepository.getAlumno().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
     val carga = localRepository.getCarga().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val kardex = localRepository.getKardex().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val califUnidades = localRepository.getCalifUnidades().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val califFinales = localRepository.getCalifFinales().stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    // Temporary storage for credentials (in a real app, use MultiplatformSettings)
     private var savedMatricula: String = ""
     private var savedPassword: String = ""
 
@@ -41,14 +39,34 @@ class SicenetViewModel(
         viewModelScope.launch {
             _uiState.value = SicenetUiState.Loading
             
-            val result = syncEngine.syncProfile(matricula, contrasenia)
-            if (result.isSuccess) {
-                savedMatricula = matricula
-                savedPassword = contrasenia
-                _uiState.value = SicenetUiState.Success("Conectado al servidor")
-            } else {
-                _uiState.value = SicenetUiState.Error("Error de red o credenciales")
+            try {
+                // 1. Intentamos sincronizar con el servidor
+                val result = syncEngine.syncProfile(matricula, contrasenia)
+                
+                if (result.isSuccess) {
+                    savedMatricula = matricula
+                    savedPassword = contrasenia
+                    _uiState.value = SicenetUiState.Success("Conectado al servidor")
+                } else {
+                    // 2. Si falla la red, intentamos login offline
+                    handleOfflineLogin(matricula, contrasenia)
+                }
+            } catch (e: Exception) {
+                handleOfflineLogin(matricula, contrasenia)
             }
+        }
+    }
+
+    private suspend fun handleOfflineLogin(matricula: String, contrasenia: String) {
+        // Buscamos si el alumno ya existe en la DB local
+        val localAlumno = localRepository.getAlumno().firstOrNull()
+        
+        if (localAlumno != null && localAlumno.matricula == matricula) {
+            savedMatricula = matricula
+            savedPassword = contrasenia
+            _uiState.value = SicenetUiState.Success("Modo Offline: Cargando datos locales")
+        } else {
+            _uiState.value = SicenetUiState.Error("Sin conexión y no hay datos locales guardados")
         }
     }
 
@@ -67,7 +85,11 @@ class SicenetViewModel(
             if (result.isSuccess) {
                 _uiState.value = SicenetUiState.Idle
             } else {
-                _uiState.value = SicenetUiState.Error("Error al sincronizar")
+                // Si falla la sincronización de una sección, solo avisamos pero mantenemos los datos locales
+                _uiState.value = SicenetUiState.Error("No se pudo actualizar. Mostrando datos locales.")
+                // Después de unos segundos volvemos a Idle para que el error no se quede pegado
+                kotlinx.coroutines.delay(3000)
+                _uiState.value = SicenetUiState.Idle
             }
         }
     }
