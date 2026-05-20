@@ -21,8 +21,10 @@ compose.desktop {
 
         nativeDistributions {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
-            packageName = "com.example.sicenetmultiplatform"
+            packageName = "Sicenet"
             packageVersion = "1.0.0"
+
+            modules("java.net.http")
         }
     }
 }
